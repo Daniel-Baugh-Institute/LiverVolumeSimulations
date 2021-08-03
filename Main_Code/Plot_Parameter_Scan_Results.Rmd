@@ -125,6 +125,27 @@ print(fff)
 
 ```
 
+Get best-fit values for all animals: Needed to make Figure S3 in Plot_Physiological_Data.RMD.
+Make sure to uncomment the last line in order to save the .RDS file
+```{r}
+maxs_M_LL <- matrix(unlist(strsplit( names(unlist(apply(MLLs,2,which.max))), split = "_" )), ncol = ncol(MLLs))
+ttt <- unlist(strsplit(as.character(maxs_M_LL[1,]), split = ".M"))
+maxs_M_LL[1,] <- ttt
+maxs_M_LL <- t(maxs_M_LL)
+colnames(maxs_M_LL) <- c("Animal", "M")
+
+maxs_CD_LL <- matrix(unlist(strsplit( names(unlist(apply(CdLLs,2,which.max))), split = "_" )), ncol = ncol(CdLLs))
+ttt <- unlist(strsplit(as.character(maxs_CD_LL[1,]), split = ".Kcd"))
+maxs_CD_LL[1,] <- ttt
+maxs_CD_LL <- t(maxs_CD_LL)
+colnames(maxs_CD_LL) <- c("Animal", "Kcd")
+
+maxs_all <- merge(maxs_M_LL, maxs_CD_LL, by = "Animal")
+maxs_all <- unique(maxs_all)
+
+#saveRDS(maxs_all, file = "Best_fit_M_Kcd_all_animals.RDS")
+```
+
 
 Figure S4C-F
 ```{r}
