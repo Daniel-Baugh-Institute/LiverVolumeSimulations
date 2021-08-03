@@ -1,4 +1,4 @@
-# Ultrasound_Liver_Regeneration_Simulations
+# Ultrasound-based Data Matching to Liver Regeneration Simulations
 
 This repository contains all code and data needed to reproduce the results of the paper:
 
