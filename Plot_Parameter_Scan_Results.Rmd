@@ -1,0 +1,296 @@
+---
+title: "Param_Scan_Results"
+author: "Ben Barnhart"
+date: "4/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(fOptions)
+library(pracma)
+library(NlcOptim)
+library(openxlsx)
+#library(deSolve)
+library(sensitivity)
+library(parallel)
+library(ggplot2)
+library(dplyr)
+library(colorspace)
+library(reshape2)
+library(Matrix)
+library(grid)
+library(gplots)
+rm(list = ls())
+
+
+opts_chunk$set(root.dir = "~/")
+
+```
+
+Read in initial data
+```{r}
+comb_res_ults <- readRDS("KCD_Par_ParScan_LLonly.RDS")
+names(comb_res_ults) <- c("11171", "11172", "11173", "11174", "A11", "A12", "A13", "A14", "A15", "A16", "A41", "A42", "A43", "A44", "A45", "A46", "BCH27", "BCH28", "BCH29", "BCHF30", "BCHF31", "BUS21", "BUS22", "BUS23", "BUS24")
+
+all_dat <- read.xlsx("All rats data 02172020.xlsx", na.strings = "", colNames = TRUE, rowNames = TRUE, sheet = "For_R_Import")
+
+animal_list <- c("11171", "11172", "11173", "11174", "A11", "A12", "A13", "A14", "A15", "A16", "A41", "A42", "A43", "A44", "A45", "A46", "BCH27", "BCH28", "BCH29", "BCHF30", "BCHF31", "BUS21", "BUS22", "BUS23", "BUS24")
+```
+
+Reformat data into M-value specific and Kcd-specific lists
+```{r}
+MLLs <- matrix(nrow = 30, ncol = 100, dimnames = list(1:30, 1:100))
+CdLLs <- matrix(nrow = 30, ncol = 100, dimnames = list(1:30, 1:100))
+for (i in 1:length(comb_res_ults)) {
+  dtemp <- comb_res_ults[[i]]
+  if (is.matrix(dtemp)){
+    
+    MLLs[i,] <- dtemp[,"Kcd_0.1"]
+    
+    
+    colnames(MLLs) <- rownames(dtemp)
+    rownames(MLLs)[i] <- animal_list[i]
+    CdLLs[i,] <- dtemp["M_20.91",]
+    rownames(CdLLs)[i] <- animal_list[i]
+    colnames(CdLLs) <- colnames(dtemp)
+    
+    # uname <- paste(c("CombD_", animal_list[i]), collapse = "")
+    # assign(uname, comb_res_ults[[i]], envir = .GlobalEnv)
+  } else {
+    next
+  }
+
+}
+```
+
+Set up meta data for help with plotting.
+```{r}
+annotdf <- unique(all_dat[,c(1,3,4)], fromLast = F)
+annotdf$Diet <- factor(annotdf$Diet, levels = c("Chow", "Carbohydrate", "Ethanol"))
+rownames(annotdf) <- c()
+annotdf <- annotdf[order(annotdf$Diet, annotdf$Sex),]
+
+
+MLLs <- MLLs[match(annotdf$Animal, rownames(MLLs)),]
+CdLLs <- CdLLs[match(annotdf$Animal, rownames(CdLLs)),]
+
+
+```
+
+Get best-fit values for all animals: Needed to make Figure S3 in Plot_Physiological_Data.RMD.
+Make sure to uncomment the last line in order to save the .RDS file
+```{r}
+maxs_M_LL <- matrix(unlist(strsplit( names(unlist(apply(MLLs,2,which.max))), split = "_" )), ncol = ncol(MLLs))
+ttt <- unlist(strsplit(as.character(maxs_M_LL[1,]), split = ".M"))
+maxs_M_LL[1,] <- ttt
+maxs_M_LL <- t(maxs_M_LL)
+colnames(maxs_M_LL) <- c("Animal", "M")
+
+maxs_CD_LL <- matrix(unlist(strsplit( names(unlist(apply(CdLLs,2,which.max))), split = "_" )), ncol = ncol(CdLLs))
+ttt <- unlist(strsplit(as.character(maxs_CD_LL[1,]), split = ".Kcd"))
+maxs_CD_LL[1,] <- ttt
+maxs_CD_LL <- t(maxs_CD_LL)
+colnames(maxs_CD_LL) <- c("Animal", "Kcd")
+
+maxs_all <- merge(maxs_M_LL, maxs_CD_LL, by = "Animal")
+maxs_all <- unique(maxs_all)
+
+
+#saveRDS(maxs_all, file = "Best_fit_M_Kcd_all_animals.RDS")
+```
+
+
+Figure S4A
+```{r}
+rgw_pal <- colorspace::sequential_hcl(n = 300, h1 = 140, h2 = 80, c1 = 50, cmax = NA, c2 = 10, l1 = 40, l2 = 97, p1 = 0.7, p2 = 1.8, rev = TRUE)
+
+eee <- pheatmap::pheatmap(na.omit(MLLs), cluster_cols = F, 
+                   cluster_rows = T, 
+                   scale = "row", 
+                   color = rgw_pal, 
+                   labels_col = c("5","","","", "---------------->", "","","", "30"), 
+                   angle_col = 0, 
+                   main = "Metabolic load vs LogLikelihood of Residuals, PHx Liver Regeneration Model",
+                   #legend_breaks = c(2,1,0,-1,2)
+                   #, annotation_row = diet_an
+                   )
+
+annotdf$SexFonts <- ifelse(annotdf$Sex == "Female", "plain", "bold.italic")
+annotdf$DietColors <- ifelse(annotdf$Diet == "Ethanol", "red", "blue")
+annotdf$DietColors[which(annotdf$Diet == "Chow")] <- "green"
+
+cols = annotdf$DietColors[order(match(annotdf$Animal, eee$gtable$grobs[[5]]$label))] 
+fots = annotdf$SexFonts[order(match(annotdf$Animal, eee$gtable$grobs[[5]]$label))] 
+
+eee$gtable$grobs[[5]]$gp = gpar(col = cols, fontsize = 10, fontface = fots)
+print(eee)
+
+
+```
+
+Figure S4B
+```{r}
+fff <- pheatmap::pheatmap(na.omit(CdLLs), cluster_cols = F, 
+                   cluster_rows = T, 
+                   scale = "row", 
+                   color = rgw_pal, 
+                   labels_col = c("0.01","","","", "---------------->", "","","", "1"), 
+                   angle_col = 0, 
+                   #legend_breaks = c(2,1,0,-1,2),
+                   main = "K Cell Death vs LogLikelihood of Residuals, PHx Liver Regeneration Model")
+
+cols = annotdf$DietColors[order(match(annotdf$Animal, fff$gtable$grobs[[5]]$label))] 
+fots = annotdf$SexFonts[order(match(annotdf$Animal, fff$gtable$grobs[[5]]$label))] 
+
+fff$gtable$grobs[[5]]$gp = gpar(col = cols, fontsize = 10, fontface = fots)
+print(fff)
+
+```
+
+
+Figure S4C-F
+```{r}
+rgw_pal <- colorspace::sequential_hcl(n = 299, h1 = 140, h2 = 80, c1 = 50, cmax = NA, c2 = 10, l1 = 40, l2 = 97, p1 = 0.7, p2 = 1.8, rev = TRUE)
+
+for (i in 1:length(comb_res_ults)) {
+  dtemp <- comb_res_ults[[i]]
+  if (is.matrix(dtemp)){
+    dtemp <- t(dtemp)
+    dtemp <- flipdim(dtemp, dim = 1)
+    
+    pcolors = rgw_pal
+    pbreaks = c(seq(from = -150, to = 10, length.out = 100))
+    # lbr = c("Kcd = 1.0", rep("", 18), "Kcd = 0.8", rep("", 19), "Kcd = 0.6", rep("", 18), "Kcd = 0.4", rep("", 19), "Kcd = 0.2", rep("", 19), "Kcd = 0.01")
+    # lbc = c("M = 30", rep("", 18), "M = 25", rep("", 19), "M = 20", rep("", 18), "M = 15", rep("", 19), "M = 10", rep("", 19), "M = 5")
+    lbr = c()
+    lbc = c()
+    
+    
+    # phm <- pheatmap::pheatmap(na.omit(dtemp), 
+    #                  cluster_cols = F, 
+    #                  cluster_rows = F, 
+    #                  show_rownames = T,
+    #                  scale = "none", 
+    #                  color = pcolors, 
+    #                  labels_col = c("5","","","", "---------------->", "","","", "30"), 
+    #                  angle_col = 0, 
+    #                  legend_breaks = pbreaks,
+    #                  main = paste("Metabolic Load vs K Cell Death LogLikelihood of Residuals, ", animal_list[i]))
+    
+    phm <- heatmap.2(na.omit(dtemp), dendrogram = 'none',
+                     scale = "none", trace = 'none', symkey = TRUE, symbreaks = TRUE,
+                     col = pcolors, 
+                     breaks = pbreaks, 
+                     Rowv = F,
+                     ALSE, Colv = FALSE, density.info = 'none',
+                     labRow = lbr, labCol = lbc, main = paste(animal_list[i]))
+    
+    
+    print(phm)
+  } else {
+    next
+  }
+}
+
+
+# pheatmap::pheatmap(na.omit(CombD_11171), cluster_cols = F, cluster_rows = F, scale = "row", color = diverge_hsv(n = 100), labels_col = c("0.01","","","", "---------------->", "","","", "1"), angle_col = 0, main = "K Cell Death vs LogLikelihood of Residuals, PHx Liver Regeneration Model")
+```
+
+
+Import volume data from scans
+```{r}
+#vol_dat <- readRDS("Volume_Data_weighted_range.RDS")
+vol_dat <- readRDS("Volume_Data_unweighted_range.RDS")
+
+use_these <- vol_dat
+use_these <- t(use_these)
+use_these <- flipdim(use_these, dim = 1)
+#pheatmap::pheatmap(na.omit(use_these), cluster_cols = F, 
+                   # cluster_rows = F, 
+                   # scale = "none", 
+                   # color = diverge_hsv(n = 100), 
+                   # labels_col = c("5","","","", "---------------->", "","","", "30"), 
+                   # angle_col = 0, 
+                   # main = "K Cell Death vs LogLikelihood of Residuals, PHx Liver Regeneration Model")
+
+
+```
+
+
+Volume at 1 week parameter scan for each animal, highlighting top 5% best fit data, Figure S5
+```{r}
+for (i in 1:length(comb_res_ults)) {
+  #browser()
+  dtemp <- comb_res_ults[[i]]
+  if (is.matrix(dtemp)) {
+    dtemp <- melt(dtemp)
+    colnames(dtemp) <- c("MetL", "Kap", "LogLik")
+    M_temp <- unlist(strsplit(as.character(dtemp$MetL), split = "_"))
+    M_temp <- M_temp[c(FALSE, TRUE)]
+    cd_temp <- unlist(strsplit(as.character(dtemp$Kap), split = "_"))
+    cd_temp <- cd_temp[c(FALSE, TRUE)]
+    dtemp$MetL <- as.numeric(M_temp); dtemp$Kap <- as.numeric(cd_temp)
+    
+    relvols <- melt(use_these)
+    M_temp <- unlist(strsplit(as.character(relvols$Var2), split = "_"))
+    M_temp <- M_temp[c(FALSE, TRUE)]
+    relvols$Var2 <- as.numeric(M_temp)
+    cd_temp <- unlist(strsplit(as.character(relvols$Var1), split = "Par30"))
+    cd_temp <- cd_temp[c(FALSE, TRUE)]
+    relvols$Var1 <- as.numeric(cd_temp)
+    
+    colnames(relvols) <- c("Kap", "MetL", "Vol_1week")
+    relvols$three_color <- c(rep(NA, nrow(relvols)))
+    relvols$three_color[which(relvols$Vol_1week < 0.4)] <- "Failure"
+    relvols$three_color[which(relvols$Vol_1week >= 0.4 & relvols$Vol_1week < 0.85)] <- "Suppressed"
+    relvols$three_color[which(relvols$Vol_1week >= 0.85)] <- "Healthy"
+    mtind <- apply(dtemp, 1, function(x){ unlist(which(relvols$Kap == x[2] & relvols$MetL == x[1])) })
+    relvols$LogLike[mtind] <- dtemp$LogLik
+    
+    LLT <- max(dtemp$LogLik) - ((max(dtemp$LogLik) -  min(dtemp$LogLik) )/ 20)
+    relvols$LogLikeThresh <- c(rep(NA, nrow(relvols)))
+    relvols$LogLikeThresh[which(relvols$LogLike > LLT)] <- 1
+    relvols$LogLikeThresh[which(relvols$LogLike <= LLT)] <- 0
+    
+    aname <- animal_list[i] 
+    adiet <- annotdf$Diet[which(annotdf$Animal == aname)]
+    asex <- annotdf$Sex[which(annotdf$Animal == aname)]
+    
+    # vxf <- ggplot(data = NULL, aes(x = MetL, y = Kap)) + theme_classic() + ggtitle(paste(aname, adiet, asex, sep = ", ")) + 
+    #   xlab("Metabolic Load (artificial value)") + ylab("K of Apoptosis (artificial value)") +
+    #   geom_jitter(data = dtemp, aes(color = LogLik)) +  scale_color_gradient2(name = "Log Likelihood",low = "blue", mid = "white", high = "red") +
+    #   scale_x_continuous(breaks = c(5,10,15,20,25,30)) + 
+    #   scale_y_continuous(breaks = c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1))
+    
+    if (i == 1){
+      vxf <- ggplot(data = NULL, aes(x = MetL, y = Kap)) + theme_classic() + ggtitle(paste(aname, adiet, asex, sep = ", ")) +
+      xlab("Metabolic Load (a.u.)") + ylab("K of Apoptosis (a.u.)") +
+      geom_jitter(data = relvols, aes(color = three_color)) +  scale_color_discrete(name = "Rel. Volume at 1 week") + 
+      scale_x_continuous(breaks = c(5,10,15,20,25,30)) +
+      scale_y_continuous(breaks = c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1))
+      print(vxf)
+    }
+    
+    
+    # vxx <- ggplot(data = NULL, aes(x = MetL, y = Kap)) + theme_classic() + ggtitle(paste(aname, adiet, asex, sep = ", ")) +
+    #   xlab("Metabolic Load (artificial value)") + ylab("K of Apoptosis (artificial value)") +
+    #   geom_jitter(data = dtemp, aes(color = LogLik)) +  scale_color_gradient2(name = "Log Likelihood",low = "blue", mid = "white", high = "red") +
+    #   scale_x_continuous(breaks = c(5,10,15,20,25,30)) +
+    #   scale_y_continuous(breaks = c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1)) +
+    #   geom_jitter(data = relvols, aes(alpha = Volalpha)) 
+    
+    vxx <- ggplot(data = NULL, aes(x = MetL, y = Kap)) + theme_classic() + ggtitle(paste(aname, adiet, asex, sep = ", ")) +
+      xlab("Metabolic Load (a.u.)") + ylab("K of Apoptosis (a.u.)") +
+      geom_jitter(data = relvols, aes(color = three_color, alpha = (LogLikeThresh))) +  scale_color_discrete(name = "Rel. Volume at 1 week") + 
+      scale_x_continuous(breaks = c(5,10,15,20,25,30)) +
+      scale_y_continuous(breaks = c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1))
+    print(vxx)
+    
+    
+    
+  } else {
+  }
+}
+```
+
