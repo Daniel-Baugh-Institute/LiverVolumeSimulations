@@ -128,13 +128,13 @@ print(fff)
 Get best-fit values for all animals: Needed to make Figure S3 in Plot_Physiological_Data.RMD.
 Make sure to uncomment the last line in order to save the .RDS file
 ```{r}
-maxs_M_LL <- matrix(unlist(strsplit( names(unlist(apply(MLLs,2,which.max))), split = "_" )), ncol = ncol(MLLs))
+maxs_M_LL <- matrix(unlist(strsplit( names(unlist(apply(MLLs,1,which.max))), split = "_" )), ncol = nrow(MLLs))
 ttt <- unlist(strsplit(as.character(maxs_M_LL[1,]), split = ".M"))
 maxs_M_LL[1,] <- ttt
 maxs_M_LL <- t(maxs_M_LL)
 colnames(maxs_M_LL) <- c("Animal", "M")
 
-maxs_CD_LL <- matrix(unlist(strsplit( names(unlist(apply(CdLLs,2,which.max))), split = "_" )), ncol = ncol(CdLLs))
+maxs_CD_LL <- matrix(unlist(strsplit( names(unlist(apply(CdLLs,1,which.max))), split = "_" )), ncol = nrow(CdLLs))
 ttt <- unlist(strsplit(as.character(maxs_CD_LL[1,]), split = ".Kcd"))
 maxs_CD_LL[1,] <- ttt
 maxs_CD_LL <- t(maxs_CD_LL)
