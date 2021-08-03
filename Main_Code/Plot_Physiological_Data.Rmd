@@ -1,0 +1,632 @@
+---
+title: "Multivariate_US_Analysis"
+author: "Ben_Barnhart"
+date: "7/14/2020"
+output: html_document
+---
+
+```{r}
+rm(list = ls())
+
+
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(Rcpp)
+library(lme4)
+library(MARSS)
+library(openxlsx)
+library(nlme)
+library(ggpmisc)
+library(ggpubr)
+#library(edge)
+library(sciplot)
+library(lsr)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(emmeans)
+
+opts_chunk$set(root.dir = "M:/Dropbox (SBG)/Benjamin-Barnhart/Ultrasound_CT_imagingData/")
+
+#opts_chunk$set(root.dir = "C:/Users/benja/Dropbox (SBG)/Benjamin-Barnhart/Ultrasound_CT_imagingData")
+```
+
+
+
+Read in data + calculate group averages. 
+```{r}
+#all_dat <- read.xlsx("All rats data 02172020.xlsx", na.strings = "", colNames = TRUE, rowNames = TRUE, sheet = "For_R_Import")
+all_dat <- read.csv("M:/Dropbox (SBG)/Benjamin-Barnhart/Ultrasound_CT_imagingData/All_Rat_Data_final_06_01_2021.csv", row.names = 1)
+
+all_dat$PV_raw <- (pi * (all_dat$PV_diameter / 2)^2) * all_dat$PV_velocity
+
+
+m1 <- all_dat[,5:13]
+m1 <- apply(all_dat[,5:13], 2, as.numeric)
+exp_group <- factor(paste(all_dat$Sex, all_dat$Diet, all_dat$Time, sep = "_"))
+
+ave_dat <- aggregate(m1, by = list(exp_group), FUN = "mean", na.action = NULL, na.rm = TRUE)
+sd_dat <- aggregate(m1, by = list(exp_group), FUN = "sd", na.rm = TRUE)
+
+ave_dat_an <- matrix(unlist(strsplit(x = as.character(ave_dat$Group.1), split = "_", )), nrow = nrow(ave_dat), byrow = TRUE)
+colnames(ave_dat_an) <- c("Sex", "Diet", "Time")
+
+ave_dat <- cbind(ave_dat_an, ave_dat)
+sd_dat <- cbind(ave_dat_an, sd_dat)
+ave_dat <- ave_dat[,-4]
+sd_dat <- sd_dat[,-4]
+# rm_col <- which(names(ave_dat) == "Animal"| names(ave_dat) == "Time"| names(ave_dat) == "Sex" | names(ave_dat) == "Diet")
+# ave_dat <- ave_dat[,-rm_col]
+# sw_col <- which(names(ave_dat) == "Group.1"| names(ave_dat) == "Group.2"| names(ave_dat) == "Group.3")
+# names(ave_dat)[sw_col] <- c("Time", "Sex", "Diet")
+# 
+ave_datm <- ave_dat[which(ave_dat[,"Sex"] == "Male"),]
+ave_datf <- ave_dat[which(ave_dat[,"Sex"] == "Female"),]
+sd_datm <- sd_dat[which(sd_dat[,"Sex"] == "Male"),]
+sd_datf <- sd_dat[which(sd_dat[,"Sex"] == "Female"),]
+
+# all_dat_full <- na.omit(all_dat)
+# 
+# all_dat_vol_only <- all_dat[,1:6]
+# all_dat_abridge <- na.omit(all_dat_vol_only)
+
+
+```
+
+
+Data preparation for anova. Removing all Chow fed animals, converting all grouping variables into factors. 
+```{r}
+model_dat <- all_dat
+model_dat$Time[which(model_dat$Time == -24)] <- "a_Presurgery"
+model_dat$Time[which(model_dat$Time == 0.3)] <- "b_20_minutes"
+model_dat$Time[which(model_dat$Time == 10)] <- "c_10_hours"
+model_dat$Time[which(model_dat$Time == 24)] <- "d_24_hours"
+model_dat$Time[which(model_dat$Time == 48)] <- "e_48_hours"
+model_dat$Time[which(model_dat$Time == 72)] <- "f_3_days"
+model_dat$Time[which(model_dat$Time == 96)] <- "g_4_days"
+model_dat$Time[which(model_dat$Time == 168)] <- "h_7_days"
+model_dat$Time[which(model_dat$Time == 336)] <- "i_2_weeks"
+
+model_dat$Time <- factor(model_dat$Time, ordered = TRUE, 
+                         levels = c("a_Presurgery", "b_20_minutes", "c_10_hours", "d_24_hours", "e_48_hours", "f_3_days", "g_4_days", "h_7_days", "i_2_weeks"))
+
+
+
+model_dat$Animal <- factor(model_dat$Animal)
+#model_dat$Diet <- factor(model_dat$Diet)
+#model_dat$Time <- as.character(model_dat$Time)
+
+#model_dat2 <- model_dat[which(model_dat$Time != "-24"),]
+model_dat2 <- model_dat[which(model_dat$Diet != "Chow"),]
+model_dat2$Diet <- factor(model_dat2$Diet, ordered = FALSE, levels = c("Carbohydrate", "Ethanol"))
+model_dat2$Sex <- factor(model_dat2$Sex)
+```
+
+
+Main Statistical Tests:
+Shown for Portal flow ("PV_flow"). Replace "PV_flow" throughout this code chunk with relevant column name in model_dat2 in order to get results for other measures. 
+```{r}
+
+
+modelo  <- lm(PV_flow ~ Sex*Diet*Time, data = model_dat2)
+
+modelo.aov <- anova_test(data = model_dat2, formula = PV_flow ~ Sex*Diet*Time)
+get_anova_table(modelo.aov)
+
+pwc1 <- model_dat2 %>%
+  group_by(Sex, Diet) %>%
+  emmeans_test(PV_flow ~ Time, p.adjust.method = "bonferroni", model = modelo) #%>%
+  #select(-df, -p) # Remove details
+pwc2 <- model_dat2 %>%
+  group_by(Sex, Time) %>%
+  emmeans_test(PV_flow ~ Diet, p.adjust.method = "bonferroni", model = modelo) #%>%
+  #select(-df, -p) # Remove details
+pwc3 <- model_dat2 %>%
+  group_by(Time, Diet) %>%
+  emmeans_test(PV_flow ~ Sex, p.adjust.method = "bonferroni", model = modelo ) #%>%
+  #select(-df, -p) # Remove details
+
+# pwc4 <- model_dat2 %>%
+#   group_by(Time) %>%
+#   emmeans_test(Volume_Norm ~ Sex*Diet, p.adjust.method = "bonferroni") %>%
+#   select(-df, -statistic, -p) # Remove details
+
+# Show comparison results for male ethanol
+# pwc1 %>% filter(Sex == "Male", Diet == "Ethanol")
+# 
+me_means <- get_emmeans(pwc1) %>% filter(Sex == "Male", Diet == "Ethanol")
+# mc_means <- get_emmeans(pwc) %>% filter(Sex == "Male", Diet == "Carbohydrate")
+# fe_means <- get_emmeans(pwc) %>% filter(Sex == "Female", Diet == "Ethanol")
+# fc_means <- get_emmeans(pwc) %>% filter(Sex == "Female", Diet == "Carbohydrate")
+```
+
+Use Levene's Test for homogeneity of variance. 
+```{r}
+model_dat2 %>%
+  group_by(Time) %>%
+  levene_test(PV_flow ~ Sex*Diet)
+```
+
+
+Checking for correlations between M/Kcd and initial US measurements (Figure S3)
+```{r}
+#maxs_all <- readRDS("Best_fit_M_Kcd_all_animals.RDS")
+maxs_all <- readRDS("Best_fit_M_Kcd_all_animals_weighted.RDS")
+
+check_dat <- all_dat[which(all_dat$Time == -24),]
+check_dat <- merge(check_dat, maxs_all, by = "Animal")
+check_dat$M <- as.numeric(check_dat$M)
+check_dat$Kcd <- as.numeric(check_dat$Kcd)
+
+for (i in c(5,7,8,9,10,11)) {
+  var_name <- colnames(check_dat)[i]
+  yax <- range(check_dat$M, na.rm = TRUE)
+  yax[1] <- yax[1] - 5; yax[2] <- yax[2] + 5
+
+  xax <- range(check_dat[,i], na.rm = TRUE)
+  xax[1] <- xax[1] - (xax[2]/10); xax[2] <- xax[2] + (xax[2]/10)
+  
+  lx <- ggplot(data = check_dat, aes(x = check_dat[,i], y = `M`)) +
+    theme(axis.text = element_text(size = 15), axis.title = element_text(size = 15), legend.position = "right") +
+    geom_point(aes(shape = Sex, color = Diet, size = 1.5)) + theme_classic() +
+    scale_color_manual(values = c( "#0000FF","#008000", "#FF0000")) + #  is green
+    # labs(title = "Relationship between liver size and bodyweight") +
+    ylab("Metabolic Load") + xlab(paste(var_name)) +
+    ylim(yax) + xlim(xax) +
+    stat_smooth( method = "lm", formula = y ~ x , size = 1, data = check_dat) +
+    stat_cor(label.x.npc = "left", label.y.npc = "top", size = 6) + 
+    stat_regline_equation(label.x.npc = "left", label.y.npc = "bottom", size = 6)
+
+  print(lx)
+}
+
+for (i in c(5,7,8,9,10,11)) {
+  var_name <- colnames(check_dat)[i]
+  yax <- range(check_dat$Kcd, na.rm = TRUE)
+  yax[1] <- yax[1] - 1; yax[2] <- yax[2] + 1
+
+  xax <- range(check_dat[,i], na.rm = TRUE)
+  xax[1] <- xax[1] - (xax[2]/10); xax[2] <- xax[2] + (xax[2]/10)
+  
+  lxxx <- ggplot(data = check_dat, aes(x = check_dat[,i], y = Kcd)) +
+    geom_point(aes(shape = Sex, color = Diet, size = 1.5)) + theme_classic() +
+    #theme(axis.text = element_text(size = 15), axis.title = element_text(size = 15)) +
+    scale_color_manual(values = c( "#0000FF","#008000", "#FF0000")) + #  is green
+    # labs(title = "Relationship between liver size and bodyweight") +
+    ylab("Cell Death Constant") + xlab(paste(var_name)) +
+    theme(legend.position = "right") +
+    ylim(yax) + xlim(xax) +
+    stat_smooth( method = "lm", formula = y ~ x , size = 1, data = check_dat) +
+    stat_cor(label.x.npc = "left", label.y.npc = "top", size = 6) + 
+    stat_regline_equation(label.x.npc = "left", label.y.npc = "bottom", size = 6)
+
+  print(lxxx)
+}
+```
+
+Normalized Volume Recovery Plot (Figure 2A)
+```{r}
+yax <- range(all_dat$Volume_Norm, na.rm = TRUE)
+yax[1] <- yax[1] - 0.5; yax[2] <- yax[2] + 0.5
+
+dat_1 <- all_dat[which(all_dat$Diet == "Carbohydrate" | all_dat$Diet == "Ethanol"),]
+dat_1$Time <- as.character(dat_1$Time)
+
+# dat_1a <- dat_1[which(dat_1$Sex == "Male"),]
+# dat_1b <- dat_1[which(dat_1$Sex == "Female"),]
+
+
+lx <- ggplot(data = dat_1, aes(x = Time, y = Volume_Norm)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  #geom_violin(scale = "area", ) +  
+  #geom_dotplot(binaxis = "y", stackdir = "center", position=position_dodge(1), dotsize = 0.5, fill = "white") +
+  #geom_split_violin(aes(colour = Diet)) +
+  geom_point(aes(colour = Diet), size = 2.5) +
+  geom_path(aes(group = Animal), alpha = 0.3) +
+  scale_x_discrete(limits = c("-24", "0.3", "10", "24", "48", "72", "96", "168", "336")) +
+  scale_color_manual(values = c("#000080", "#FF0000")) + # "#008000", is green
+  labs(title = "Liver Volume Recovery") + 
+  ylab("Normalized Volume (mm^3) / Bodyweight (g)") + xlab("Hours Post-PHx") + 
+  theme(legend.position = "none") + ylim(yax) +
+  facet_wrap(~Sex, ncol = 1) #+
+  
+  #geom_text(size = 2,  vjust = "inward", nudge_x = 0.2)
+print(lx)
+
+```
+
+
+Scatter plot of all data with regression between raw volume and bodyweight (Figure 3B,C)
+```{r}
+# somePDFpath <- "M:/Dropbox (SBG)/Benjamin-Barnhart/Ultrasound_CT_imagingData/pdf1.pdf"
+# pdf(file = somePDFpath)
+
+dat_1 <- all_dat[which(all_dat$Diet != "Chow"), ]
+dat_1 <- dat_1[which(dat_1$Time != 96),]
+
+yax <- range(dat_1$Volume_raw, na.rm = TRUE)
+yax[1] <- yax[1] - 50; yax[2] <- yax[2] + 50
+
+xax <- range(dat_1$Bodyweight, na.rm = TRUE)
+xax[1] <- xax[1] - 50; xax[2] <- xax[2] + 50
+
+dat_2 <- dat_1[which(dat_1$Time != "336"),]
+dat_3 <- dat_1[which(dat_1$Time == "-24"),]
+
+lx <- ggplot(data = dat_1, aes(x = Bodyweight, y = Volume_raw)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  geom_point(aes(color = Diet)) + 
+  geom_point(data = dat_3, shape = 2, size = 3, aes(x = Bodyweight, y = Volume_raw)) +
+  geom_path(aes(group = Animal)) +
+  # geom_line() +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c( "#0000FF", "#FF0000")) + #"#008000"  is green
+  # labs(title = "Relationship between liver size and bodyweight") + 
+  ylab("Liver Volume (mm^3)") + xlab("Bodyweight (g)") + 
+  theme(legend.position = "none") + 
+  ylim(yax) +
+  stat_smooth( method = "lm", formula = y ~ x , size = 1, data = dat_1) +
+  stat_cor(label.x.npc = "left", label.y.npc = "top", size = 10) +
+  facet_wrap(~Sex, ncol = 1)
+  
+  #stat_poly_eq(parse = T, aes(label = ..eq.label..), formula = y ~ x)
+
+print(lx)
+
+mx <- ggplot(data = dat_1, aes(x = Bodyweight, y = Volume_raw)) + 
+  theme_classic() + theme(axis.text.y = element_text(size = 20), axis.text.x = element_text(size = 15), axis.title = element_text(size = 20)) +
+  geom_point(aes(color = Diet), size = 2) + 
+  geom_point(data = dat_3, shape = 2, size = 3, aes(x = Bodyweight, y = Volume_raw)) +
+  #geom_path(aes(group = Animal)) +
+  # geom_line() +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c( "#0000FF", "#FF0000")) + #"#008000"  is green
+  # labs(title = "Relationship between liver size and bodyweight") + 
+  ylab("Liver Volume (mm^3)") + xlab("Bodyweight (g)") + 
+  theme(legend.position = "none") + 
+  ylim(yax) +
+  stat_smooth(aes(group = Time), method = "lm", formula = y ~ x , size = 1, data = dat_2, se = FALSE) +
+  stat_cor(label.y = 10500, ) + stat_regline_equation(label.y = 10000) +
+  #stat_cor(label.x.npc = "left", label.y.npc = "top") +
+  facet_wrap(Sex ~ Time, ncol = 8)
+
+print(mx)
+# dev.off()
+
+```
+
+Regression of Volume vs PV_flow, all samples (Figure S1C)
+```{r}
+yax <- range(all_dat$Volume_Norm, na.rm = TRUE)
+yax[1] <- yax[1] - 0.5; yax[2] <- yax[2] + 0.5
+
+xax <- range(all_dat$PV_raw, na.rm = TRUE)
+xax[1] <- xax[1] - 0.5; xax[2] <- xax[2] + 0.5
+
+lx <- ggplot(data = all_dat, aes(x = PV_raw, y = Volume_Norm)) + 
+  theme_classic() +
+  geom_point(aes(shape = Sex, color = Diet)) + 
+  # geom_line() +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c( "#0000FF","#008000", "#FF0000")) + #  is green
+  # labs(title = "Relationship between liver size and bodyweight") + 
+  ylab("Liver Volume (rel)") + xlab("PV_flow") + 
+  theme(legend.position = "right") + 
+  ylim(yax) +
+  stat_smooth( method = "lm", formula = y ~ x , size = 1, data = all_dat) +
+  stat_cor(label.x.npc = "left", label.y.npc = "top")
+  
+  #stat_poly_eq(parse = T, aes(label = ..eq.label..), formula = y ~ x)
+
+print(lx)
+
+```
+
+PV flow vs Stiffness (Figure S2B)
+```{r}
+yax <- range(all_dat$Stiffness, na.rm = TRUE)
+yax[1] <- yax[1] - 0.5; yax[2] <- yax[2] + 0.5
+
+xax <- range(all_dat$PV_flow, na.rm = TRUE)
+xax[1] <- xax[1] - 0.5; xax[2] <- xax[2] + 0.5
+
+lx <- ggplot(data = all_dat, aes(x = PV_flow, y = Stiffness)) + 
+  theme_classic() +
+  geom_point(aes(shape = Sex, color = Diet)) + 
+  # geom_line() +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c( "#0000FF","#008000", "#FF0000")) + #  is green
+  # labs(title = "Relationship between liver size and bodyweight") + 
+  ylab("Liver Stiffness (m/s)") + xlab("Portal Flow (cubic mm / s)") + 
+  theme(legend.position = "right") + 
+  ylim(yax) +
+  stat_smooth(method = "lm", formula = y ~ x , size = 1, data = all_dat) +
+  stat_cor(label.x.npc = "left", label.y.npc = "top")
+  
+  #stat_poly_eq(parse = T, aes(label = ..eq.label..), formula = y ~ x)
+
+print(lx)
+```
+
+Normalized Volume at 1 week vs Portal Flow at 10 hrs (Figure S1A)
+```{r}
+dat_1w <- all_dat[which(all_dat$Time == 168), c(1:4,6)] #All Volume data at 1 week
+dat_1d <- all_dat[which(all_dat$Time == 10), c(1:4, 8)] #All portal flow data at 10 hours post-PHx
+#names(dat_1d) <- c("Animal",  "Time1",    "Sex",     "Diet",    "PV_flow")
+dat_merg <- merge(dat_1w, dat_1d, by = c("Animal", "Sex", "Diet"))
+
+
+yax <- range(dat_merg$Volume_Norm, na.rm = TRUE)
+yax[1] <- yax[1] - 0.5; yax[2] <- yax[2] + 0.5
+
+xax <- range(dat_merg$PV_flow, na.rm = TRUE)
+xax[1] <- xax[1] - 0.5; xax[2] <- xax[2] + 0.5
+
+lx <- ggplot(data = dat_merg, aes(x = PV_flow, y = Volume_Norm)) + 
+  theme_classic() +
+  geom_point(aes(shape = Sex, color = Diet)) + 
+  # geom_line() +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c( "#0000FF","#008000", "#FF0000")) + #  is green
+  # labs(title = "Relationship between liver size and bodyweight") + 
+  ylab("Relative Volume (1 week time point)") + xlab("PV_flow (10 hr time point)") + 
+  theme(legend.position = "right") + 
+  ylim(yax) +
+  stat_smooth(method = "lm", formula = y ~ x , size = 1, data = dat_merg) +
+  stat_cor(label.x.npc = "left", label.y.npc = "top")
+  
+  #stat_poly_eq(parse = T, aes(label = ..eq.label..), formula = y ~ x)
+
+print(lx)
+```
+
+Normalized Volume at 1 week vs Portal Flow at 24 hrs (Figure S1A)
+```{r}
+dat_1w <- all_dat[which(all_dat$Time == 168), c(1:4,6)] #All Volume data at 1 week
+dat_1d <- all_dat[which(all_dat$Time == 24), c(1:4, 8)] #All portal flow data at 10 hours post-PHx
+#names(dat_1d) <- c("Animal",  "Time1",    "Sex",     "Diet",    "PV_flow")
+dat_merg <- merge(dat_1w, dat_1d, by = c("Animal", "Sex", "Diet"))
+
+
+yax <- range(dat_merg$Volume_Norm, na.rm = TRUE)
+yax[1] <- yax[1] - 0.5; yax[2] <- yax[2] + 0.5
+
+xax <- range(dat_merg$PV_flow, na.rm = TRUE)
+xax[1] <- xax[1] - 0.5; xax[2] <- xax[2] + 0.5
+
+lx <- ggplot(data = dat_merg, aes(x = PV_flow, y = Volume_Norm)) + 
+  theme_classic() +
+  geom_point(aes(shape = Sex, color = Diet)) + 
+  # geom_line() +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c( "#0000FF","#008000", "#FF0000")) + #  is green
+  # labs(title = "Relationship between liver size and bodyweight") + 
+  ylab("Relative Volume (1 week time point)") + xlab("PV_flow (24 hr time point)") + 
+  theme(legend.position = "right") + 
+  ylim(yax) +
+  stat_smooth(method = "lm", formula = y ~ x , size = 1, data = dat_merg) +
+  stat_cor(label.x.npc = "left", label.y.npc = "top")
+  
+  #stat_poly_eq(parse = T, aes(label = ..eq.label..), formula = y ~ x)
+
+print(lx)
+```
+
+
+PV_flow Data shown as timeseries with trendline (Figure 4A, D)
+```{r}
+yax <- range(all_dat$PV_flow, na.rm = TRUE)
+yax[1] <- yax[1] - 0.5; yax[2] <- yax[2] + 0.1
+
+dat_1 <- all_dat[which(all_dat$Diet == "Ethanol" | all_dat$Diet == "Carbohydrate"),]
+dat_fit <- dat_1[which(dat_1$Time != -24),]
+
+ylabb <- expression(paste("mL/min", cm^3))
+
+lx <- ggplot(data = dat_1, aes(x = Time, y = PV_flow, colour = Diet)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  stat_smooth(aes(y = PV_flow), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  #stat_smooth(aes(y = PV_flow), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  geom_point(alpha = 1, size = 2) + 
+  geom_path(aes(group = Animal), size = 0.5, alpha = 0.5) +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c("#0000FF", "#FF0000")) + # "#008000", is green
+  labs(title = "PV_flow after PHx in Male Rats") + 
+  ylab(ylabb) + xlab("Hours Post-PHx") + 
+  theme(legend.position = "none") + 
+  ylim(yax) + xlim(-50, 200) +
+  facet_wrap(~Sex, ncol = 1)
+  #geom_text(size = 2,  vjust = "inward", nudge_x = 0.2)
+print(lx)
+
+px <- ggplot(data = dat_1, aes(x = Time, y = PV_flow, colour = Sex)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  stat_smooth(aes(y = PV_flow), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  #stat_smooth(aes(y = PV_flow), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  geom_point(alpha = 1, size = 2) + 
+  geom_path(aes(group = Animal), size = 0.5, alpha = 0.5) +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c("darkorange", "purple")) + # "#008000", is green
+  labs(title = "Portal Flow Rate after PHx in Male Rats") + 
+  ylab(ylabb) + xlab("Hours Post-PHx") + 
+  theme(legend.position = "none") + 
+  ylim(yax) + xlim(-50, 200) +
+  facet_wrap(~Diet, ncol = 1)
+  #geom_text(size = 2,  vjust = "inward", nudge_x = 0.2)
+print(px)
+
+#as.vector(colors())[grep("orange", as.vector(colors()))]
+
+```
+
+HA flow (Figure S2A)
+```{r}
+yax <- range(all_dat$HA_flow, na.rm = TRUE)
+yax[1] <- yax[1] - 0.5; yax[2] <- yax[2] + 0.1
+
+dat_1 <- all_dat[which(all_dat$Diet == "Ethanol" | all_dat$Diet == "Carbohydrate"),]
+dat_fit <- dat_1[which(dat_1$Time != -24),]
+
+ylabb <- expression(paste("mL/min", cm^3))
+
+lx <- ggplot(data = dat_1, aes(x = Time, y = HA_flow, colour = Diet)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  stat_smooth(aes(y = PV_flow), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  #stat_smooth(aes(y = PV_flow), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  geom_point(alpha = 1, size = 2) + 
+  geom_path(aes(group = Animal), size = 0.5, alpha = 0.5) +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c("#0000FF", "#FF0000")) + # "#008000", is green
+  labs(title = "HA_flow after PHx in Male Rats") + 
+  ylab(ylabb) + xlab("Hours Post-PHx") + 
+  theme(legend.position = "none") + 
+  ylim(yax) + xlim(-50, 200) +
+  facet_wrap(~Sex, ncol = 1)
+  #geom_text(size = 2,  vjust = "inward", nudge_x = 0.2)
+print(lx)
+
+px <- ggplot(data = dat_1, aes(x = Time, y = HA_flow, colour = Sex)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  stat_smooth(aes(y = PV_flow), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  #stat_smooth(aes(y = PV_flow), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  geom_point(alpha = 1, size = 2) + 
+  geom_path(aes(group = Animal), size = 0.5, alpha = 0.5) +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c("darkorange", "purple")) + # "#008000", is green
+  labs(title = "Hepatic Artery Flow Rate after PHx in Male Rats") + 
+  ylab(ylabb) + xlab("Hours Post-PHx") + 
+  #theme(legend.position = "none") + 
+  ylim(yax) + xlim(-50, 200) +
+  facet_wrap(~Diet, ncol = 1)
+  #geom_text(size = 2,  vjust = "inward", nudge_x = 0.2)
+print(px)
+```
+
+
+
+Stiffness (Figure 4B, E)
+```{r}
+yax <- range(all_dat$Stiffness, na.rm = TRUE)
+yax[1] <- yax[1] - 0.5; yax[2] <- yax[2] + 0.1
+
+dat_1 <- all_dat[which(all_dat$Diet == "Ethanol" | all_dat$Diet == "Carbohydrate"),]
+dat_fit <- dat_1[which(dat_1$Time != -24),]
+
+lx <- ggplot(data = dat_1, aes(x = Time, y = Stiffness, colour = Diet)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  stat_smooth(aes(y = Stiffness), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1, alpha = 0.5) +
+  #stat_smooth(aes(y = Stiffness), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1, alpha = 0.5) +
+  geom_point(alpha = 1, size = 2) + 
+  geom_path(aes(group = Animal), size = 0.5, alpha = 0.5) +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c("#0000FF", "#FF0000")) + # "#008000", is green
+  labs(title = "Stiffness Rate after PHx in Male Rats") + 
+  ylab("m/s") + xlab("Hours Post-PHx") + 
+  theme(legend.position = "none") + 
+  ylim(yax) + xlim(-50, 200) +
+
+  facet_wrap(~Sex, ncol = 1)
+  #geom_text(size = 2,  vjust = "inward", nudge_x = 0.2)
+print(lx)
+
+px <- ggplot(data = dat_1, aes(x = Time, y = Stiffness, colour = Sex)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  stat_smooth(aes(y = Stiffness), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  #stat_smooth(aes(y = Stiffness), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  geom_point(alpha = 1, size = 2) + 
+  geom_path(aes(group = Animal), size = 0.5, alpha = 0.5) +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c("darkorange", "purple")) + # "#008000", is green
+  labs(title = "Stiffness after PHx in Male Rats") + 
+  ylab("m/s") + xlab("Hours Post-PHx") + 
+  theme(legend.position = "none") + 
+  ylim(yax) + xlim(-50, 200) +
+  facet_wrap(~Diet, ncol = 1)
+  #geom_text(size = 2,  vjust = "inward", nudge_x = 0.2)
+print(px)
+```
+
+Oxygenations (Figure 4C,F)
+```{r}
+
+o2_ex <- expression(paste("Percent ", O^2, "saturation"))
+
+yax <- range(all_dat$Oxygenation, na.rm = TRUE)
+yax[1] <- yax[1] - 0.5; yax[2] <- yax[2] + 0.1
+
+dat_1 <- all_dat[which(all_dat$Diet == "Ethanol" | all_dat$Diet == "Carbohydrate"),]
+dat_fit <- dat_1[which(dat_1$Time != -24),]
+
+
+lx <- ggplot(data = dat_1, aes(x = Time, y = Oxygenation, colour = Diet)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  stat_smooth(aes(y = Oxygenation), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  stat_cor() + stat_regline_equation(label.y = 50) +
+  #stat_smooth(aes(y = Oxygenation), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  geom_point(alpha = 1, size = 2) + 
+  geom_path(aes(group = Animal), size = 0.5, alpha = 0.5) +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c("#0000FF", "#FF0000")) + # "#008000", is green
+  labs(title = "Tissue Oxygen after PHx in Male Rats") + 
+  ylab(o2_ex) + xlab("Hours Post-PHx") + 
+  theme(legend.position = "none") + 
+  ylim(yax) + xlim(-50, 200) +
+
+  facet_wrap(~Sex, ncol = 1)
+  #geom_text(size = 2,  vjust = "inward", nudge_x = 0.2)
+print(lx)
+
+px <- ggplot(data = dat_1, aes(x = Time, y = Oxygenation, colour = Sex)) + 
+  theme_classic() + theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) +
+  stat_smooth(aes(y = Oxygenation), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_1) +
+  stat_cor() + stat_regline_equation(label.y = 50) +
+  #stat_smooth(aes(y = Oxygenation), method = "lm", formula = y ~ x + I(x^2)+ I(x^3), size = 1.25, data = dat_2) +
+  geom_point(alpha = 1, size = 2) + 
+  geom_path(aes(group = Animal), size = 0.5, alpha = 0.5) +
+  #scale_x_discrete(limits = c("negative", "positive")) +
+  scale_color_manual(values = c("darkorange", "purple")) + # "#008000", is green
+  labs(title = "Tissue Oxygen after PHx in Male Rats") + 
+  ylab(o2_ex) + xlab("Hours Post-PHx") + 
+  theme(legend.position = "none") + 
+  ylim(yax) + xlim(-50, 200) +
+
+  facet_wrap(~Diet, ncol = 1)
+  #geom_text(size = 2,  vjust = "inward", nudge_x = 0.2)
+print(px)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
