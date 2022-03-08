@@ -33,7 +33,7 @@ Read in initial data
 comb_res_ults <- readRDS("KCD_Par_ParScan_LLonly.RDS")
 names(comb_res_ults) <- c("11171", "11172", "11173", "11174", "A11", "A12", "A13", "A14", "A15", "A16", "A41", "A42", "A43", "A44", "A45", "A46", "BCH27", "BCH28", "BCH29", "BCHF30", "BCHF31", "BUS21", "BUS22", "BUS23", "BUS24")
 
-all_dat <- read.xlsx("All rats data 02172020.xlsx", na.strings = "", colNames = TRUE, rowNames = TRUE, sheet = "For_R_Import")
+all_dat <- read.csv("SupplementaryFile3_unzipped/Auxilliary_Code_and_data/All_Rat_Data_final_06_01_2021.csv")
 
 animal_list <- c("11171", "11172", "11173", "11174", "A11", "A12", "A13", "A14", "A15", "A16", "A41", "A42", "A43", "A44", "A45", "A46", "BCH27", "BCH28", "BCH29", "BCHF30", "BCHF31", "BUS21", "BUS22", "BUS23", "BUS24")
 ```
