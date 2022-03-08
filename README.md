@@ -33,6 +33,6 @@ Collect_Parameter_Scan_Volume_Data_windows.R
 Weighted_Parameter_Scans_windows.R
 Unweighted_Parameter_Scans_windows.R *optional*
 
-Copies of these are included for linux users which allow better functionality for parallel processing. The first R script will run in a few hours. The weighted and unweighted parameter scans can take up to a week to complete on an 8-core windows PC. 
+Copies of these are included for linux users which allow better functionality for parallel processing. The first R script will run in a few hours. The weighted and unweighted parameter scans can take up to a week to complete on an 8-core windows PC. Copies of the expected output files are included in the Main code folder as .RDS files.
 
 Rmarkdown files are included to plot the results of the simulations, which should be run within RStudio. 
