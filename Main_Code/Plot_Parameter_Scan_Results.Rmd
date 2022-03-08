@@ -223,7 +223,7 @@ for (i in 1:length(comb_res_ults)) {
   #browser()
   dtemp <- comb_res_ults[[i]]
   if (is.matrix(dtemp)) {
-    dtemp <- melt(dtemp)
+    dtemp <- reshape2::melt(dtemp)
     colnames(dtemp) <- c("MetL", "Kap", "LogLik")
     M_temp <- unlist(strsplit(as.character(dtemp$MetL), split = "_"))
     M_temp <- M_temp[c(FALSE, TRUE)]
@@ -231,7 +231,7 @@ for (i in 1:length(comb_res_ults)) {
     cd_temp <- cd_temp[c(FALSE, TRUE)]
     dtemp$MetL <- as.numeric(M_temp); dtemp$Kap <- as.numeric(cd_temp)
     
-    relvols <- melt(use_these)
+    relvols <- reshape2::melt(use_these)
     M_temp <- unlist(strsplit(as.character(relvols$Var2), split = "_"))
     M_temp <- M_temp[c(FALSE, TRUE)]
     relvols$Var2 <- as.numeric(M_temp)
