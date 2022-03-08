@@ -82,6 +82,7 @@ Set up the meta data to help with plotting.
 ```{r}
 annotdf <- unique(all_dat[,c(1,3,4)], fromLast = F)
 annotdf$Diet <- factor(annotdf$Diet, levels = c("Chow", "Carbohydrate", "Ethanol"))
+annotdf$Animal <- all_dat$Animal[match(all_dat$Sample_Code, annotdf$Sample_Code)]
 rownames(annotdf) <- c()
 annotdf <- annotdf[order(annotdf$Diet, annotdf$Sex),]
 
@@ -113,8 +114,8 @@ annotdf$SexFonts <- ifelse(annotdf$Sex == "Female", "plain", "bold.italic")
 annotdf$DietColors <- ifelse(annotdf$Diet == "Ethanol", "red", "blue")
 annotdf$DietColors[which(annotdf$Diet == "Chow")] <- "green"
 
-cols = annotdf$DietColors[order(match(annotdf$Animal, eee$gtable$grobs[[5]]$label))] 
-fots = annotdf$SexFonts[order(match(annotdf$Animal, eee$gtable$grobs[[5]]$label))] 
+cols = annotdf$DietColors[match(eee$gtable$grobs[[5]]$label, annotdf$Animal)] 
+fots = annotdf$SexFonts[match(eee$gtable$grobs[[5]]$label, annotdf$Animal)] 
 
 eee$gtable$grobs[[5]]$gp = gpar(col = cols, fontsize = 10, fontface = fots)
 print(eee)
@@ -133,8 +134,8 @@ fff <- pheatmap::pheatmap(na.omit(t(CdLLs)), cluster_cols = F,
                    #legend_breaks = c(2,1,0,-1,2),
                    main = "K Cell Death vs LogLikelihood of Residuals, PHx Liver Regeneration Model")
 
-cols = annotdf$DietColors[order(match(annotdf$Animal, fff$gtable$grobs[[5]]$label))] 
-fots = annotdf$SexFonts[order(match(annotdf$Animal, fff$gtable$grobs[[5]]$label))] 
+cols = annotdf$DietColors[match(fff$gtable$grobs[[5]]$label, annotdf$Animal)] 
+fots = annotdf$SexFonts[match(fff$gtable$grobs[[5]]$label, annotdf$Animal)]  
 
 fff$gtable$grobs[[5]]$gp = gpar(col = cols, fontsize = 10, fontface = fots)
 print(fff)
@@ -202,7 +203,7 @@ for (i in 1:length(comb_res_ults)) {
                      labRow = lbr, labCol = lbc, main = paste(animal_list[i]))
     
     
-    print(phm)
+    phm
   } else {
     next
   }
